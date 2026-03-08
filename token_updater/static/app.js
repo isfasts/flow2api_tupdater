@@ -707,10 +707,10 @@ function renderStatusAndRanking(breakdown, topProfiles) {
     const maxProfileTotal = Math.max(1, ...topProfiles.map((profile) => (profile.sync_count || 0) + (profile.error_count || 0)));
 
     const statusItems = [
-        { label: "已登录", value: loggedIn, tone: "success" },
-        { label: "未登录", value: notLoggedIn, tone: "warning" },
-        { label: "启用", value: active, tone: "primary" },
-        { label: "停用", value: inactive, tone: "danger" },
+        { label: "???", value: loggedIn, tone: "success" },
+        { label: "???", value: notLoggedIn, tone: "warning" },
+        { label: "??", value: active, tone: "primary" },
+        { label: "??", value: inactive, tone: "danger" },
     ];
 
     return `
@@ -721,26 +721,26 @@ function renderStatusAndRanking(breakdown, topProfiles) {
                         <div class="donut compact-donut" style="${donutStyle}"></div>
                         <div class="donut-center">
                             <div class="donut-value">${ratio}%</div>
-                            <div class="muted">登录有效率</div>
+                            <div class="muted">?????</div>
                         </div>
                     </div>
                 </div>
-                <div class="status-summary-grid">
+                <div class="status-summary-list">
                     ${statusItems.map((item) => `
-                        <div class="status-summary-item ${item.tone}">
-                            <div class="status-summary-label">${item.label}</div>
-                            <div class="status-summary-value">${item.value}</div>
+                        <div class="status-row ${item.tone}">
+                            <span class="status-row-label">${item.label}</span>
+                            <strong class="status-row-value">${item.value}</strong>
                         </div>
                     `).join("")}
                 </div>
             </div>
-            <div class="ranking-panel">
+            <div class="ranking-list">
                 ${(topProfiles.length ? topProfiles : []).map((profile, index) => {
                     const totalOps = (profile.sync_count || 0) + (profile.error_count || 0);
                     const percent = Math.max(8, Math.round((totalOps / maxProfileTotal) * 100));
                     return `
-                        <div class="ranking-card">
-                            <div class="ranking-index">#${index + 1}</div>
+                        <div class="ranking-row">
+                            <span class="ranking-index">#${index + 1}</span>
                             <div class="ranking-body">
                                 <div class="split-line">
                                     <strong>${escapeHtml(profile.name || "未命名")}</strong>
@@ -777,11 +777,11 @@ function renderFailureReasons(items) {
 
     const maxCount = Math.max(1, ...items.map((item) => Number(item.count || 0)));
     return `
-        <div class="stack-list">
+        <div class="data-list">
             ${items.map((item) => {
                 const width = Math.max(10, Math.round((Number(item.count || 0) / maxCount) * 100));
                 return `
-                    <div class="stack-item">
+                    <div class="data-row">
                         <div class="split-line">
                             <strong>${escapeHtml(item.label || item.reason || "未知原因")}</strong>
                             <span class="mini-tag danger">${escapeHtml(String(item.count || 0))}</span>
@@ -804,12 +804,12 @@ function renderTargetDistribution(items) {
 
     const maxProfiles = Math.max(1, ...items.map((item) => Number(item.profile_count || item.total || 0)));
     return `
-        <div class="stack-list">
+        <div class="data-list">
             ${items.map((item) => {
                 const totalProfiles = Number(item.profile_count || item.total || 0);
                 const width = Math.max(10, Math.round((totalProfiles / maxProfiles) * 100));
                 return `
-                    <div class="stack-item">
+                    <div class="data-row">
                         <div class="split-line">
                             <strong>${escapeHtml(item.target_label || item.label || item.target_url || "未配置")}</strong>
                             <span class="mini-tag primary">${escapeHtml(String(totalProfiles))} 个 Profile</span>
