@@ -881,9 +881,11 @@ async def protocol_login(profile_id: int, request: ProtocolLoginRequest, token: 
         profile_name=profile.get("name", ""),
     ):
         proxy_url = profile.get("proxy_url") if profile.get("proxy_enabled") else None
-        result = await protocol_loginer.login(google_cookies, proxy=proxy_url)
+        result = await protocol_loginer.login(google_cookies, proxy=proxy_url, email=profile.get("email"))
 
     if result.get("success") and result.get("session_token"):
+        # 存储 Google cookies 并设置登录模式为协议
+        await profile_db.update_profile(profile_id, google_cookies=google_cookies, login_method="protocol", is_logged_in=1)
         # 将 session token 写入 profile 的浏览器数据
         import json as _json
         session_cookie_json = _json.dumps([{

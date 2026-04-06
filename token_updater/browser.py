@@ -519,11 +519,11 @@ class BrowserManager:
         if not self._text_contains_any(text, markers):
             return False
 
-        if await self._click_button_by_text(page, ["Continue as", "继续作为", "以此身份继续", "Continue"]):
+        if await self._click_button_by_text(page, ["Continue as", "继续作为", "以此身份继续", "Continue", "続行", "계속", "Continuar"]):
             return True
         if await self._click_button_by_text(
             page,
-            ["Use Chromium without an account", "不使用账号", "不使用帳號", "暂不登录", "以后再说", "Not now"],
+            ["Use Chromium without an account", "不使用账号", "不使用帳號", "暂不登录", "以后再说", "Not now", "アカウントなし", "계정 없이", "Sin cuenta", "Plus tard"],
         ):
             return True
         return False
@@ -626,19 +626,22 @@ class BrowserManager:
                     "继续",
                     "保存并继续",
                     "开启同步",
+                    "保存して続行",
+                    "동기화 켜기",
+                    "Guardar y continuar",
                 ],
             )
 
         if self._text_contains_any(text, dismiss_markers):
             return await self._click_button_by_text(
                 page,
-                ["Not now", "No thanks", "Skip", "以后再说", "暂不", "跳过"],
+                ["Not now", "No thanks", "Skip", "以后再说", "暂不", "跳过", "後で", "나중에", "Ahora no", "Non merci"],
             )
 
         return False
 
     async def _advance_google_login(self, page, login_account: str, login_password: str) -> bool:
-        if await self._click_button_by_text(page, ["Use another account", "使用其他账号", "使用其他帳戶"]):
+        if await self._click_button_by_text(page, ["Use another account", "使用其他账号", "使用其他帳戶", "別のアカウントを使用", "다른 계정 사용", "Usar otra cuenta", "Utiliser un autre compte"]):
             return True
         if await self._click_account_choice(page, login_account):
             return True
@@ -647,7 +650,7 @@ class BrowserManager:
             ACCOUNT_INPUT_SELECTORS,
             login_account,
             submit_selectors=ACCOUNT_SUBMIT_SELECTORS,
-            submit_patterns=["下一步", "Next", "继续", "Continue"],
+            submit_patterns=["下一步", "Next", "继续", "Continue", "次へ", "다음", "Siguiente", "Suivant", "Weiter", "Avançar"],
             success_selectors=PASSWORD_INPUT_SELECTORS,
         ):
             return True
@@ -656,7 +659,7 @@ class BrowserManager:
             PASSWORD_INPUT_SELECTORS,
             login_password,
             submit_selectors=PASSWORD_SUBMIT_SELECTORS,
-            submit_patterns=["下一步", "Next", "继续", "Continue", "登录", "Sign in"],
+            submit_patterns=["下一步", "Next", "继续", "Continue", "登录", "Sign in", "次へ", "続行", "로그인", "Iniciar sesión", "Connexion", "Anmelden", "Fazer login", "Войти"],
             success_selectors=["[href*='labs.google']", "[data-test-id='profile-menu-button']"],
         ):
             return True
@@ -768,6 +771,10 @@ class BrowserManager:
                 "Confirm",
                 "继续",
                 "Continue",
+                "続行",
+                "계속",
+                "Continuar",
+                "Bestätigen",
             ],
         ):
             return True
@@ -788,7 +795,7 @@ class BrowserManager:
                         await asyncio.sleep(0.3)
                 except Exception:
                     continue
-            if await self._click_button_by_text(page, ["下一步", "Next", "继续", "Continue"]):
+            if await self._click_button_by_text(page, ["下一步", "Next", "继续", "Continue", "次へ", "다음", "Siguiente", "Suivant"]):
                 return True
 
         onboarding_markers = [
@@ -811,7 +818,7 @@ class BrowserManager:
             await asyncio.sleep(0.5)
             if await self._click_button_by_text(
                 page,
-                ["继续", "Continue", "同意", "Agree", "下一步", "Next", "Got it", "Done", "Skip", "Accept", "Start", "OK"],
+                ["继续", "Continue", "同意", "Agree", "下一步", "Next", "Got it", "Done", "Skip", "Accept", "Start", "OK", "次へ", "同意する", "다음", "동의", "Aceptar", "Accepter", "Akzeptieren", "Начать"],
             ):
                 return True
 
@@ -918,10 +925,36 @@ class BrowserManager:
         if token:
             update_data["last_token"] = self._mask_token(token)
             update_data["last_token_time"] = datetime.now().isoformat()
+            update_data["login_method"] = "browser"
         normalized_email = self._normalize_email(email or "")
         if normalized_email:
             update_data["email"] = normalized_email
         await profile_db.update_profile(profile_id, **update_data)
+
+    async def _save_google_cookies_from_context(
+        self,
+        profile_id: int,
+        context: BrowserContext,
+    ) -> None:
+        """从浏览器上下文提取 Google cookies 并存储，用于后续协议刷新"""
+        try:
+            all_google_cookies = []
+            for domain in [".google.com", "accounts.google.com"]:
+                try:
+                    cookies = await context.cookies(f"https://{domain}")
+                    all_google_cookies.extend(cookies)
+                except Exception:
+                    pass
+
+            if not all_google_cookies:
+                return
+
+            # 转为 JSON 存储
+            google_cookies_json = json.dumps(all_google_cookies)
+            await profile_db.update_profile(profile_id, google_cookies=google_cookies_json)
+            logger.info(f"[Profile {profile_id}] 已从浏览器提取 {len(all_google_cookies)} 个 Google cookies 用于协议刷新")
+        except Exception as e:
+            logger.warning(f"[Profile {profile_id}] 提取 Google cookies 失败: {e}")
 
     def _parse_cookies_payload(self, cookies_json: str) -> List[Dict[str, Any]]:
         data = json.loads(cookies_json)
@@ -1136,6 +1169,8 @@ class BrowserManager:
                     email=self._resolve_known_email(profile or {}),
                     is_logged_in=is_logged_in,
                 )
+                if is_logged_in:
+                    await self._save_google_cookies_from_context(profile_id, self._active_context)
                 await self._close_active()
                 await self._stop_vnc_stack()
 
@@ -1222,6 +1257,7 @@ class BrowserManager:
             )
             if token:
                 logger.info(f"[{profile['name']}] Token 提取成功")
+                await self._save_google_cookies_from_context(profile["id"], context)
             else:
                 logger.warning(f"[{profile['name']}] 未找到 Token，会话可能已过期")
 
@@ -1322,6 +1358,8 @@ class BrowserManager:
                 )
                 if not token:
                     return {"success": False, "error": "未获取到会话令牌，请改用手动登录"}
+
+                await self._save_google_cookies_from_context(profile_id, context)
 
                 return {
                     "success": True,

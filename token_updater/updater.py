@@ -201,7 +201,23 @@ class TokenSyncer:
 
         logger.info(f"[{profile['name']}] 开始同步 -> {flow2api_url}")
 
-        token = await browser_manager.extract_token(profile_id)
+        # 优先协议刷新（有 google_cookies 就用）
+        token = None
+        google_cookies = profile.get("google_cookies")
+        if google_cookies:
+            from .protocol_login import protocol_loginer
+            proxy_url = profile.get("proxy_url") if profile.get("proxy_enabled") else None
+            logger.info(f"[{profile['name']}] 协议刷新...")
+            login_result = await protocol_loginer.login(google_cookies, proxy=proxy_url, email=profile.get("email"))
+            if login_result.get("success"):
+                token = login_result["session_token"]
+                logger.info(f"[{profile['name']}] 协议刷新成功")
+            else:
+                logger.warning(f"[{profile['name']}] 协议刷新失败: {login_result.get('error')}，回退浏览器")
+                await profile_db.update_profile(profile_id, google_cookies=None)
+
+        if not token:
+            token = await browser_manager.extract_token(profile_id)
         if not token:
             error = "无法提取 Token，请先登录"
             await self._update_profile_check_result(
