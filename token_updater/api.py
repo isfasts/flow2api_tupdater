@@ -541,6 +541,10 @@ class ImportCookiesRequest(BaseModel):
     cookies_json: str
 
 
+class ProtocolLoginRequest(BaseModel):
+    google_cookies: str
+
+
 class ImportAccountsRequest(BaseModel):
     content: str
     update_existing: bool = True
@@ -856,6 +860,49 @@ async def import_cookies(profile_id: int, request: ImportCookiesRequest, token: 
     if not result.get("success"):
         raise HTTPException(400, result.get("error") or "导入失败")
     await dashboard_events.publish("cookies_imported", {"profile_id": profile_id})
+    return result
+
+
+@app.post("/api/profiles/{profile_id}/protocol-login")
+async def protocol_login(profile_id: int, request: ProtocolLoginRequest, token: str = Depends(verify_session)):
+    from .protocol_login import protocol_loginer
+
+    profile = await profile_db.get_profile(profile_id)
+    if not profile:
+        raise HTTPException(404, "不存在")
+
+    google_cookies = (request.google_cookies or "").strip()
+    if not google_cookies:
+        raise HTTPException(400, "Google Cookies 不能为空")
+
+    async with execution_gate.hold(
+        "protocol_login",
+        profile_id=profile_id,
+        profile_name=profile.get("name", ""),
+    ):
+        proxy_url = profile.get("proxy_url") if profile.get("proxy_enabled") else None
+        result = await protocol_loginer.login(google_cookies, proxy=proxy_url)
+
+    if result.get("success") and result.get("session_token"):
+        # 将 session token 写入 profile 的浏览器数据
+        import json as _json
+        session_cookie_json = _json.dumps([{
+            "name": config.session_cookie_name,
+            "value": result["session_token"],
+            "domain": ".labs.google",
+            "path": "/",
+            "secure": True,
+            "httpOnly": True,
+            "sameSite": "Lax",
+        }])
+        await browser_manager.import_cookies(profile_id, session_cookie_json)
+
+    await dashboard_events.publish(
+        "protocol_login",
+        {"profile_id": profile_id, "success": bool(result.get("success"))},
+    )
+    if not result.get("success"):
+        raise HTTPException(400, result.get("error") or "协议登录失败")
     return result
 
 

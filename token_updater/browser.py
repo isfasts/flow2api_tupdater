@@ -1,4 +1,4 @@
-﻿"""浏览器管理 v3.1 - 持久化上下文 + VNC登录 + Headless刷新"""
+"""浏览器管理 v3.1 - 持久化上下文 + VNC登录 + Headless刷新"""
 import asyncio
 import json
 import os
@@ -1043,13 +1043,9 @@ class BrowserManager:
                 )
 
                 await context.add_cookies(cookies)
-                token = await self._get_session_cookie(context)
 
-                await self._persist_login_state(
-                    profile_id,
-                    token,
-                    email=self._resolve_known_email(profile),
-                )
+                # 导入后访问 labs 页面刷新 session
+                token = await self._extract_from_context(profile, context)
 
                 return {
                     "success": True,

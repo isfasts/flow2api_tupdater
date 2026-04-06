@@ -950,6 +950,7 @@ function renderProfileCard(profile) {
                     <button class="btn ghost small" ${getBrowserLockAttrs()} onclick="checkLogin(${profile.id}, this)">检测</button>
                     <button class="btn success small" ${getBrowserLockAttrs()} onclick="syncProfile(${profile.id}, this)">同步</button>
                     <button class="btn ghost small" onclick="openCookieModal(${profile.id})">会话数据</button>
+                    <button class="btn ghost small" onclick="openProtocolLoginModal(${profile.id})">协议登录</button>
                 </div>
                 <div class="button-row">
                     <button class="btn ghost small" onclick="openProfileModal(${profile.id})">编辑</button>
@@ -1290,7 +1291,7 @@ function openCookieModal(profileId) {
             <div class="field">
                 <label for="cookie-json">会话数据文本</label>
                 <textarea id="cookie-json" placeholder='[{"name":"...","value":"...","domain":".labs.google","path":"/","secure":true}]'></textarea>
-                <span class="field-hint">导入成功后，系统会把会话数据写入该账号的持久化浏览器资料。</span>
+                <span class="field-hint">导入成功后，系统会把会话数据写入该账号的持久化浏览器资料并自动刷新 session。</span>
             </div>
             <div class="modal-actions">
                 <button class="btn ghost" onclick="closeModal()">取消</button>
@@ -1298,6 +1299,70 @@ function openCookieModal(profileId) {
             </div>
         </div>
     `);
+}
+
+function openProtocolLoginModal(profileId) {
+    state.modal = {type: "protocol-login", profileId};
+    showModal(`
+        <div class="modal-card">
+            <div class="modal-head">
+                <div>
+                    <span class="eyebrow">协议登录</span>
+                    <h3 class="card-title">纯 HTTP 登录（无需浏览器）</h3>
+                </div>
+                <button class="btn ghost small" onclick="closeModal()">关闭</button>
+            </div>
+            <div class="field">
+                <label for="google-cookies">Google Cookies</label>
+                <textarea id="google-cookies" placeholder='粘贴 Google 账号的 cookies，支持以下格式：&#10;&#10;JSON: [{"name":"SID","value":"xxx"}, ...]&#10;纯文本: SID=xxx; HSID=xxx; SSID=xxx'></textarea>
+                <span class="field-hint">需要 accounts.google.com 的 SID/HSID/SSID/APISID/SAPISID cookie。可用浏览器插件（如 EditThisCookie）导出。</span>
+            </div>
+            <div class="modal-actions">
+                <button class="btn ghost" onclick="closeModal()">取消</button>
+                <button class="btn primary" ${getBrowserLockAttrs()} onclick="submitProtocolLogin(this)">协议登录</button>
+            </div>
+        </div>
+    `);
+}
+
+async function submitCookies(button) {
+    const modal = state.modal || {};
+    const cookiesJson = (document.getElementById("cookie-json")?.value || "").trim();
+    if (!cookiesJson) {
+        toast("请输入会话数据文本", "error");
+        return;
+    }
+
+    await withOperationLock(button, "导入中...", {action: "import_cookies", label: "导入会话数据"}, async () => {
+        const data = await json(`${API}/api/profiles/${modal.profileId}/import-cookies`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({cookies_json: cookiesJson}),
+        });
+        closeModal(true);
+        await refreshDashboard(false, true);
+        toast(data.has_token ? "导入成功，已检测到会话令牌" : "已导入，但暂未检测到会话令牌", data.has_token ? "success" : "error");
+    });
+}
+
+async function submitProtocolLogin(button) {
+    const modal = state.modal || {};
+    const googleCookies = (document.getElementById("google-cookies")?.value || "").trim();
+    if (!googleCookies) {
+        toast("请输入 Google Cookies", "error");
+        return;
+    }
+
+    await withOperationLock(button, "登录中...", {action: "protocol_login", label: "协议登录", profile_id: modal.profileId}, async () => {
+        const data = await json(`${API}/api/profiles/${modal.profileId}/protocol-login`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({google_cookies: googleCookies}),
+        });
+        closeModal(true);
+        await refreshDashboard(false, true);
+        toast(data.success ? "协议登录成功，已获取会话令牌" : (data.error || "协议登录失败"), data.success ? "success" : "error");
+    });
 }
 
 async function submitCookies(button) {
@@ -1567,7 +1632,9 @@ window.closeModal = closeModal;
 window.openCredentialImportModal = openCredentialImportModal;
 window.submitCredentialImport = submitCredentialImport;
 window.openCookieModal = openCookieModal;
+window.openProtocolLoginModal = openProtocolLoginModal;
 window.submitCookies = submitCookies;
+window.submitProtocolLogin = submitProtocolLogin;
 window.syncAll = syncAll;
 window.syncProfile = syncProfile;
 window.checkLogin = checkLogin;
